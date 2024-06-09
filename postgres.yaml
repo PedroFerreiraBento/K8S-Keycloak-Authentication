@@ -1,0 +1,105 @@
+# Config
+apiVersion: v1
+kind: Secret
+metadata:
+  name: keycloak-postgres-secret
+  namespace: keycloak-ns
+  labels:
+    app: keycloak-postgres-app
+type: Opaque
+data:
+  # Base64: keycloak_db
+  POSTGRES_DB: a2V5Y2xvYWtfZGI=
+  # Base64: keycloak_user
+  POSTGRES_USER: a2V5Y2xvYWtfdXNlcg==
+  # Base64: test123
+  POSTGRES_PASSWORD: dGVzdDEyMw==
+  # Base64: /var/lib/postgresql/data/pgdata
+  PGDATA: L3Zhci9saWIvcG9zdGdyZXNxbC9kYXRhL3BnZGF0YQ==
+---
+# Persistent Volume
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: keycloak-postgres-pv
+  namespace: keycloak-ns
+  labels:
+    app: keycloak-postgres-app
+spec:
+  capacity:
+    storage: 1Gi 
+  accessModes:
+    - ReadWriteOnce
+  hostPath:
+    path: /mnt/data/keycloak/postgresql
+  persistentVolumeReclaimPolicy: Retain 
+---
+# Persistent Claim
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: keycloak-postgres-pv-claim
+  namespace: keycloak-ns
+  labels:
+    app: keycloak-postgres-app
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+  volumeName: keycloak-postgres-pv
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: keycloak-postgres-svc
+  namespace: keycloak-ns
+  labels:
+    app: keycloak-postgres-app
+spec:
+  clusterIP: None
+  selector:
+    app: keycloak-postgres-app
+  ports:
+    - port: 5432       # Port that the service listens on
+      targetPort: 5432 # Port on the Pod
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: keycloak-postgres-sttf-deployment
+  namespace: keycloak-ns
+spec:
+  serviceName: keycloak-postgres-svc
+  replicas: 1
+  selector:
+    matchLabels:
+      app: keycloak-postgres-app
+  template:
+    metadata:
+      labels:
+        app: keycloak-postgres-app
+    spec:
+      containers:
+        - name: keycloak-postgres-pod
+          image: postgres:16.3
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - secretRef:
+                name: keycloak-postgres-secret
+          ports:
+            - containerPort: 5432
+              name: postgres
+          volumeMounts:
+            - name: keycloak-postgres-pv-claim
+              mountPath: /var/lib/postgresql/data
+  volumeClaimTemplates:
+    - metadata:
+        name: keycloak-postgres-pv-claim
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: 1Gi
